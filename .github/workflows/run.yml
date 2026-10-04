@@ -1,0 +1,139 @@
+name: Update xiaosa
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "20 5 * * *"
+  push:
+    branches:
+      - master
+    paths:
+      - "tools/**"
+
+permissions:
+  contents: write
+
+jobs:
+  xiaosa:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the branch
+        uses: actions/checkout@v4
+
+      - name: xiaosa tools
+        run: |
+          cd tools/
+          pip install demjson3 pycryptodome requests --break-system-packages
+          python tvbox.py https://9877.kstore.space/sun.json xs.json dec
+          python build_local.py xs.json output
+          # 清理上次构建残留，避免旧文件一直留在仓库里
+          rm -rf ../xiaosa/ ../jar/
+          mkdir -p ../xiaosa/
+          \cp -pdr output/* ../xiaosa/
+          python xiao.py ./output/api.json dianshi.json
+          python xiao.py ./output/api.json jsm.json
+          python copy_xbpq.py ./output/api.json
+          \cp -pdr dianshi_with_app_sites.json ../dianshi.json
+          \cp -pdr jsm_with_app_sites.json ../jsm.json
+          mkdir -p ../jar/
+          \cp -pdr ./output/spider.jar ../jar/spider.jar
+          rm -rf dianshi_with_app_sites.json jsm_with_app_sites.json output xs.json
+          cd ../
+        shell: bash
+
+      # 将 xiaosa 产生的所有文件统一整理收纳到构建目录中
+      - name: Prepare xiaosa dist
+        run: |
+          mkdir -p dist_xiaosa/xiaosa
+          # 将根目录属于 xiaosa 的文件移入或复制到 dist_xiaosa/xiaosa/ 目录下
+          [ -d xiaosa ] && \cp -pdr xiaosa/* dist_xiaosa/xiaosa/ 2>/dev/null || true
+          [ -f dianshi.json ] && \cp -pdr dianshi.json dist_xiaosa/xiaosa/ 2>/dev/null || true
+          [ -f jsm.json ] && \cp -pdr jsm.json dist_xiaosa/xiaosa/ 2>/dev/null || true
+          [ -d jar ] && \cp -pdr jar dist_xiaosa/xiaosa/ 2>/dev/null || true
+          [ -d XBPQ ] && \cp -pdr XBPQ dist_xiaosa/xiaosa/ 2>/dev/null || true
+          [ -d XYQHiker ] && \cp -pdr XYQHiker dist_xiaosa/xiaosa/ 2>/dev/null || true
+          [ -d json ] && \cp -pdr json dist_xiaosa/xiaosa/ 2>/dev/null || true
+          [ -d py ] && \cp -pdr py dist_xiaosa/xiaosa/ 2>/dev/null || true
+          [ -d js ] && \cp -pdr js dist_xiaosa/xiaosa/ 2>/dev/null || true
+        shell: bash
+
+      - name: Upload xiaosa artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiaosa-output
+          path: dist_xiaosa/
+
+  fty:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the branch
+        uses: actions/checkout@v4
+
+      - name: fty tools
+        run: |
+          cd tools/
+          pip install demjson3 pycryptodome requests --break-system-packages
+          python tvbox.py https://www.xn--sss604efuw.net/tv ty.json dec
+          python fty.py ty.json
+          \cp -pdr tvbox_cleaned.json ../fty.json
+          rm -rf ../jar/ ../FTY/
+          mkdir -p ../jar/
+          \cp -pdr fan.txt ../jar/fan.txt
+          git clone --depth=1 --recursive https://github.com/fantaiying7/EXT.git
+          mkdir -p ../FTY/
+          \cp -pdr EXT/* ../FTY/
+          rm -rf tvbox_cleaned.json fan.txt EXT ty.json
+          cd ../
+        shell: bash
+
+      # 将 fty 产生的所有文件统一收纳到 dist_fty/fty 目录中
+      - name: Prepare fty dist
+        run: |
+          mkdir -p dist_fty/fty
+          [ -d fty ] && \cp -pdr fty/* dist_fty/fty/ 2>/dev/null || true
+          [ -f fty.json ] && \cp -pdr fty.json dist_fty/fty/ 2>/dev/null || true
+          [ -d FTY ] && \cp -pdr FTY dist_fty/fty/ 2>/dev/null || true
+          [ -d jar ] && \cp -pdr jar dist_fty/fty/ 2>/dev/null || true
+        shell: bash
+
+      - name: Upload fty artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fty-output
+          path: dist_fty/
+
+  git-push:
+    needs: [xiaosa, fty]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout the branch
+        uses: actions/checkout@v4
+
+      - name: Download xiaosa artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: xiaosa-output
+          path: ./
+        # 某个 job 失败导致产物缺失时不中断，仍推送另一侧成功的结果
+        continue-on-error: true
+
+      - name: Download fty artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: fty-output
+          path: ./
+        continue-on-error: true
+
+      - name: Git push assets
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git add xiaosa/ fty/
+          if ! git diff-index --quiet HEAD --; then
+            git commit -m "更新源 $(date +%Y%m%d%H%M)"
+            git push origin master
+          else
+            echo "没有文件更新，不执行 git push"
+          fi
+        shell: bash
