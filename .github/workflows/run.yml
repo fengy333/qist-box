@@ -6,7 +6,7 @@ on:
     - cron: "20 5 * * *"
   push:
     branches:
-      - master
+      - main
     paths:
       - "tools/**"
 
@@ -132,7 +132,8 @@ jobs:
           git add xiaosa/ fty/
           if ! git diff-index --quiet HEAD --; then
             git commit -m "更新源 $(date +%Y%m%d%H%M)"
-            git push origin master
+            # 推送到当前提交所在分支（本仓库默认分支为 main）
+            git push origin HEAD:main
           else
             echo "没有文件更新，不执行 git push"
           fi
